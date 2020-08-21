@@ -7,36 +7,17 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <chrono>
 
-//error checking macro
-#define ASSERT(x) if (!(x)) __debugbreak();
-#define GLCall(x) GLClearError();\
-    x;\
-    ASSERT(GLLogCall(#x, __FILE__, __LINE__))
+#include "Renderer.h"
+#include "VertexBuffer.h"
+#include "IndexBuffer.h"
 
 struct ShaderProgramSource
 {
     std::string VertexSource;
     std::string FragmentSouce;
 };
-
-static void GLClearError()
-{
-    while (glGetError() != GL_NO_ERROR);  //GL_NO_ERROR = 0
-
-}
-
-static bool GLLogCall(const char* function, const char* file, int line)
-{
-    while (GLenum error = glGetError()) {
-        std::cout << "OpenGL Error: (0x" << std::hex << error 
-            << std::dec << ")" << "\nFUNCTION: " << function << "\nFILE: " << file 
-            << "\nLINE: " << line << std::endl;
-        return false;
-    }
-    return true;
-    //check glew.h for hex errors
-}
 
 static ShaderProgramSource ParseShader(const std::string& filepath) 
 {
@@ -200,36 +181,25 @@ int main(void)
         2, 3, 0
     };
 
-    //STUDY UP ON SYNTAX TO COMMENT better SUMMARIES
-    //this is my vao (vertex array object)
+
+
+    //VAO (vertex array object) must be set up before binding attributes                                                                     
     //needed when going into core profile mode; is created for you in compat mode
-    unsigned int VertexArrayID;
-    GLCall(glGenVertexArrays(1, &VertexArrayID));   //sending the address of vertices to fill with and ID of 1
+    unsigned int VertexArrayID;                                             //sending the address of vertices to fill with and ID of 1
+    GLCall(glGenVertexArrays(1, &VertexArrayID));                           
     GLCall(glBindVertexArray(VertexArrayID));
 
     //create buffer and copy data
-    unsigned int buffer;
-    GLCall(glGenBuffers(1, &buffer));   //sending the address of buffer to fill with and ID of 1
-    GLCall(glBindBuffer(GL_ARRAY_BUFFER, buffer));  //buffer of memory
-    //now put data in buffer
-    GLCall(glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), positions, GL_STATIC_DRAW));  //2nd paramter in bytes
-    //6 vertices to make triangle, 12 to make square
-
+    VertexBuffer vertexBuff(positions, 4 * 2 * sizeof(float)); 
+    
     //define vertex layout here
     GLCall(glEnableVertexAttribArray(0));
-    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0));
+    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, 0));  
+                                                                            //^^^^ == (start of indice, how big each vec is, data type, ?, amount to get to next vec in bytes, ?)
+                                                                            //links vertices to our buffer
+    IndexBuffer indexBuff(indices, 6);
     
-    //start of indice, then how big the vec is (vec2),
-    //stride is the amount to get to the next vertex in bytes
-
-    unsigned int ibo;
-    GLCall(glGenBuffers(1, &ibo));   //sending the address of buffer to fill with and ID of 1
-    GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));  //buffer of memory
-    //now put data in buffer
-    GLCall(glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof(unsigned int), indices, GL_STATIC_DRAW)); //unsigned char can save memory compared to unsigned int
-    //0 - 255 with char so limited indices
-    //KEY IS that it has to be unsigned for any type you choose (char, int, etc)
-
+    //upload shader
     ShaderProgramSource source = ParseShader("res/shader/Basic.shader");
     std::cout << "VERTEX\n" << source.VertexSource << std::endl;
     std::cout << "FRAGMENT\n" << source.FragmentSouce << std::endl;
@@ -237,12 +207,17 @@ int main(void)
     unsigned int shader = CreateShader(source.VertexSource, source.FragmentSouce);
     GLCall(glUseProgram(shader));
 
+    //uniforms are essential for altering shader at run time (cpu computes rgba then sends to gpu) another form of sending data to the shader
     GLCall(int location = glGetUniformLocation(shader, "u_Color"));
     ASSERT(location != -1);
     GLCall(glUniform4f(location, 0.8f, 0.3f, 0.8f, 1.0f));
 
     float r = 0.0f;
     float increment = 0.05f;
+    //DIDNT WORK
+    //auto t_Start = std::chrono::high_resolution_clock::now();
+    //auto t_Now = std::chrono::high_resolution_clock::now();
+    //float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_Now - t_Start).count();
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window) && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS)
@@ -250,6 +225,10 @@ int main(void)
         /* Render here */
         glClear(GL_COLOR_BUFFER_BIT);
         GLCall(glUniform4f(location, r, 0.3f, 0.8f, 1.0f));
+
+                                                //instead of binding vertex buffer, atrrib pointer etc. just bind vao
+        GLCall(glBindVertexArray(VertexArrayID));
+        indexBuff.Bind();                       //bind vertex buffer repeatedly
 
         if (r > 1.0f) increment = -0.5f;
         else if (r < 0.0f) increment = 0.5f;
